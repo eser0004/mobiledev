@@ -1,4 +1,19 @@
-import React, { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { db } from "./src/services/firebase";
+
+import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc } from "firebase/firestore"; 
+
+import { StatusBar } from "expo-status-bar";
+
+
+
+
+/*const querySnapshot = await getDocs(collection(db, "notes"));
+querySnapshot.forEach((doc) => {
+  console.log(`${doc.id} => ${doc.data()}`);
+}); */
+
 import {
   StyleSheet,
   Text,
@@ -8,7 +23,9 @@ import {
   FlatList,
   Alert,
 } from "react-native";
-import { StatusBar } from "expo-status-bar";
+
+
+
 
 const PREVIEW_LEN = 25;
 
@@ -34,18 +51,40 @@ export default function App() {
     [notes, selectedId]
   );
 
-  function addNote() {
+  useEffect(() => { // læser og henter noterne ved app start, lavet selv hihi
+  async function fetchNotes() {
+    try {
+      const querySnapshot = await getDocs(collection(db, "notes"));
+      const notesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setNotes(notesData);
+    } catch (error) {
+      console.error("Error fetching notes:", error);
+    }
+  }
+  fetchNotes();
+}, []);
+
+
+
+
+ async function addNote() {
+  console.log("addNote pressed", newNoteText);
+  try {
     const text = newNoteText.trim();
     if (!text) return;
 
-    const note = {
-      id: String(Date.now()),
-      text,
-    };
+    const docRef = await addDoc(collection(db, "notes"), {
+      text: text,
+    });
 
-    setNotes((prev) => [...prev, note]); // ny note til sidst
-    setNewNoteText(""); // ryd input efter tilføj (krav)
+    console.log("Document written with ID: ", docRef.id);
+
+    setNotes((prev) => [...prev, { id: docRef.id, text: text }]);
+    setNewNoteText(""); // ← den her
+  } catch (e) {
+    console.error("Error adding document: ", e);
   }
+}
 
   function openDetail(note) {
     setSelectedId(note.id);
@@ -57,25 +96,53 @@ export default function App() {
     setDraftText("");
   }
 
-  function saveDetail() {
-    const text = draftText.trim();
+  async function saveDetail() {
+     const text = draftText.trim();
     if (!text) {
       Alert.alert("Tom note", "En note må ikke være tom.");
       return;
     }
-
-    setNotes((prev) =>
-      prev.map((n) => (n.id === selectedId ? { ...n, text } : n))
-    );
-    goBack();
+    try {
+      await updateDoc(doc(db, "notes", selectedId), {
+        text: text,
+      });
+      setNotes((prev) =>
+        prev.map((n) => (n.id === selectedId ? { ...n, text } : n))
+      );
+      goBack();
+    } catch (error) {
+      console.error("Error updating document:", error);
+      Alert.alert("Update error", String(error?.message ?? error));
+      return;
+    }
   }
+  
+  //   // const text = draftText.trim();
+  //   // if (!text) {
+  //   //   Alert.alert("Tom note", "En note må ikke være tom.");
+  //   //   return;
+  //   // }
 
-  function deleteNote(id) {
+  //   setNotes((prev) =>
+  //     prev.map((n) => (n.id === selectedId ? { ...n, text } : n))
+  //   );
+  //   goBack();
+  // }
+
+ async function deleteNote(id) {
+  console.log("deleteNote called", id);
+  try {
+    await deleteDoc(doc(db, "notes", id));
     setNotes((prev) => prev.filter((n) => n.id !== id));
     if (selectedId === id) goBack();
+  } catch (error) {
+    console.error("Error deleting note:", error);
+    Alert.alert("Delete error", String(error?.message ?? error));
   }
+}
 
   function confirmDelete(id) {
+    console.log("confirmDelete pressed", id);
     Alert.alert("Slet note?", "Er du sikker?", [
       { text: "Annullér", style: "cancel" },
       { text: "Slet", style: "destructive", onPress: () => deleteNote(id) },
